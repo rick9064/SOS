@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:flutter_tts/flutter_tts.dart'; // 👈 New import
+import 'package:flutter_tts/flutter_tts.dart';
 import '../functionality/sos_service.dart';
 
 class SOSScreen extends StatefulWidget {
@@ -17,10 +17,11 @@ class _SOSScreenState extends State<SOSScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
   final SOSService _sosService = SOSService();
-  final FlutterTts _flutterTts = FlutterTts(); // 👈 New instance
+  final FlutterTts _flutterTts = FlutterTts();
 
   bool isSending = false;
   bool _isDisposed = false;
+  bool sosActive = false;
 
   Future<void> _speak(String message) async {
     await _flutterTts.setLanguage("en-US");
@@ -28,7 +29,7 @@ class _SOSScreenState extends State<SOSScreen> {
     await _flutterTts.speak(message);
   }
 
-  Future<void> _sendSOS() async {
+  Future<void> _startSOS() async {
     final email = _emailController.text.trim();
     final mobile = _mobileController.text.trim();
 
@@ -37,7 +38,7 @@ class _SOSScreenState extends State<SOSScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please enter a valid email and 10-digit mobile number')),
         );
-        _speak("Please enter a valid email and mobile number."); // 👈 Voice feedback
+        _speak("Please enter a valid email and mobile number.");
       }
       return;
     }
@@ -53,16 +54,17 @@ class _SOSScreenState extends State<SOSScreen> {
       );
       if (!_isDisposed) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SOS email and SMS sent!')),
+          const SnackBar(content: Text('SOS started with email and SMS')),
         );
-        _speak("SOS email and SMS sent successfully."); // 👈 Voice success
+        _speak("SOS started with email and SMS.");
+        setState(() => sosActive = true);
       }
     } catch (e) {
       if (!_isDisposed) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
-        _speak("Failed to send SOS. Please try again."); // 👈 Voice error
+        _speak("Failed to start SOS.");
       }
     } finally {
       if (!_isDisposed) {
@@ -71,11 +73,21 @@ class _SOSScreenState extends State<SOSScreen> {
     }
   }
 
+  void _stopSOS() {
+    _sosService.stopSOS();
+    setState(() => sosActive = false);
+    _speak("SOS stopped.");
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('SOS stopped')),
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
     _mobileController.dispose();
-    _flutterTts.stop(); // 👈 Clean up TTS
+    _flutterTts.stop();
+    _sosService.stopSOS();
     _isDisposed = true;
     super.dispose();
   }
@@ -105,15 +117,29 @@ class _SOSScreenState extends State<SOSScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: isSending ? null : _sendSOS,
-              child: isSending
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Send SOS'),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: isSending || sosActive ? null : _startSOS,
+                    child: isSending
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Start SOS'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: sosActive ? _stopSOS : null,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    child: const Text('Stop SOS'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
