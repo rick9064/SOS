@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,55 +13,66 @@ class SOSService {
   final EmailService _emailService = EmailService();
   final SMSService _smsService = SMSService();
 
+  Timer? _emailTimer;
+  bool _isRunning = false;
+
   Future<void> triggerSOS({
     required CameraDescription frontCamera,
     required CameraDescription rearCamera,
     required String email,
     required String mobile,
   }) async {
-    CameraController? rearController;
-    CameraController? frontController;
+    // First run immediately
+    await _runCaptureAndSend(frontCamera, rearCamera, email, mobile, true);
+
+    // Start repeating every 30 seconds
+    _emailTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!_isRunning) {
+        _runCaptureAndSend(frontCamera, rearCamera, email, mobile, false);
+      }
+    });
+  }
+
+  Future<void> _runCaptureAndSend(
+    CameraDescription frontCamera,
+    CameraDescription rearCamera,
+    String email,
+    String mobile,
+    bool isInitial,
+  ) async {
+    _isRunning = true;
 
     try {
-      // Initialize and capture from rear camera
-      rearController = CameraController(rearCamera, ResolutionPreset.high);
-      await rearController.initialize();
-      final rearImage = await _cameraService.captureImage(rearController);
+      print("[SOS] Capturing rear image...");
+      final rearImage = await _cameraService.captureImage(rearCamera);
 
-      // Small delay to ensure channel reply is done before disposing
-      await Future.delayed(const Duration(milliseconds: 300));
-      await rearController.dispose();
-      rearController = null;
+      print("[SOS] Capturing front image...");
+      final frontImage = await _cameraService.captureImage(frontCamera);
 
-      // Initialize and capture from front camera
-      frontController = CameraController(frontCamera, ResolutionPreset.high);
-      await frontController.initialize();
-      final frontImage = await _cameraService.captureImage(frontController);
-
-      await Future.delayed(const Duration(milliseconds: 300));
-      await frontController.dispose();
-      frontController = null;
-
-      // Get location
+      print("[SOS] Getting location...");
       final location = await _locationService.getCurrentLocation();
 
-      // Send email and SMS
-      if (frontImage != null && rearImage != null && location != null) {
+      if (rearImage != null && frontImage != null && location != null) {
+        print("[SOS] Sending email...");
         await _emailService.sendEmail(rearImage, frontImage, location, email);
-        await _smsService.sendSMS(mobile, location, email);
-      } else {
-        throw Exception('Missing image or location');
-      }
 
+        if (isInitial) {
+          print("[SOS] Sending SMS...");
+          await _smsService.sendSMS(mobile, location, email);
+        }
+      } else {
+        print("[SOS] Skipping due to null image/location.");
+      }
     } catch (e) {
-      // Dispose controllers safely
-      if (rearController != null && rearController.value.isInitialized) {
-        await rearController.dispose();
-      }
-      if (frontController != null && frontController.value.isInitialized) {
-        await frontController.dispose();
-      }
-      rethrow;
+      print("[SOSService] Error during SOS: $e");
+    } finally {
+      _isRunning = false;
     }
+  }
+
+  void stopSOS() {
+    _emailTimer?.cancel();
+    _emailTimer = null;
+    print("[SOSService] SOS stopped.");
   }
 }
