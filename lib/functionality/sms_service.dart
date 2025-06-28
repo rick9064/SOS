@@ -14,7 +14,7 @@ class SMSService {
 
       final message = '''
 🚨 SOS ALERT 🚨
-Live images have been sent to the registered email: $email
+Live images have been sent to the registered email (Check Your SPAM Folder): $email
 
 Location:
 https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}
